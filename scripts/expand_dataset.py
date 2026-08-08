@@ -80,20 +80,34 @@ class Gate:
               f"{len(self.stems):,} held-out filename stems.")
 
     def check(self, path: Path, digest: str | None = None) -> bool:
-        """True if this candidate is safe to add to train/."""
-        if self.use_stem and path.stem in self.stems:
-            self.rejected["filename_stem_in_val_or_test"] += 1
-            return False
+        """True if this candidate is safe to add to train/.
+
+        Both gates are evaluated independently even once one has already
+        rejected the image. Short-circuiting would make the report attribute
+        every rejection to whichever check happened to run first, which says
+        nothing about whether the other one was load-bearing.
+        """
+        by_stem = self.use_stem and path.stem in self.stems
+        by_md5 = False
+        dup = False
         if self.use_md5:
             digest = digest or _md5(path)
-            if digest in self.md5s:
-                self.rejected["md5_in_val_or_test"] += 1
-                return False
-            if digest in self.seen_md5:
-                self.rejected["duplicate_within_new_data"] += 1
-                return False
-            self.seen_md5.add(digest)
-        return True
+            by_md5 = digest in self.md5s
+            dup = not by_md5 and digest in self.seen_md5
+            if not (by_stem or by_md5 or dup):
+                self.seen_md5.add(digest)
+
+        if by_stem:
+            self.rejected["filename_stem_in_val_or_test"] += 1
+        if by_md5:
+            self.rejected["md5_in_val_or_test"] += 1
+        if by_stem and by_md5:
+            self.rejected["caught_by_both_gates"] += 1
+        if by_stem and not by_md5:
+            self.rejected["stem_only_would_have_been_missed_by_md5"] += 1
+        if dup:
+            self.rejected["duplicate_within_new_data"] += 1
+        return not (by_stem or by_md5 or dup)
 
 
 def preprocess_to(src: Path, dst: Path, cfg: dict) -> bool:

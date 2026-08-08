@@ -58,14 +58,39 @@ large archives therefore take **26–46 hours** to transfer.
 
 | Stage | State |
 |---|---|
-| Pipeline, config, leakage gates | ✅ complete, gates passing on the base tree |
-| `segmented` archive (46 MB) | ✅ downloaded, 1,000 images + masks |
+| Pipeline, config, leakage gates | ✅ complete, gates passing |
+| `segmented` archive (46 MB) | ✅ downloaded, extracted, ingested — 699 images added |
 | `unlabeled` archive (29.4 GB) | ⏳ downloading |
 | `videos` archive (25.2 GB) | ⏸ queued |
 | Expansion, training, evaluation | ⏸ blocked on the transfers |
 
 Results tables are absent rather than provisional. Nothing is reported here until it has been
 measured — the same rule V.1 held to.
+
+### First measured result: the leakage gate was not paranoia
+
+The segmentation archive is the smallest and least interesting of the three additions, and it
+produced the most important finding in the project so far.
+
+**301 of its 1,000 images are byte-identical copies of V.1's held-out images.**
+
+| | Images in the segmentation set | Share |
+|---|---:|---:|
+| `polyps` **validation** set (154 images) | 153 | **99.4%** |
+| `polyps` **test** set (155 images) | 148 | **95.5%** |
+
+The obvious reading of "train on all the data" — unzip the segmentation set into the polyps
+class — would have placed **148 of the 155 polyps test images directly into training**.
+`polyps` is 9.6% of the test set and scored F1 0.9735 in V.1; it would have gone to ≈1.0 and
+dragged macro-F1 up with it. The result would have looked like a triumph for more data and
+would have been an artefact.
+
+All 301 were rejected. Both gates caught all of them independently (`stem_only` = 0), so for
+this archive the md5 check alone was sufficient — the filename-stem gate earned nothing here
+and is retained only as defence-in-depth for the two archives still downloading.
+
+This is why `val/` and `test/` are hardlinked and frozen rather than rebuilt, and why the
+gates are tests that block training rather than warnings in a log.
 
 ---
 

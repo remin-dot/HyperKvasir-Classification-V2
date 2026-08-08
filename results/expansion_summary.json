@@ -1,0 +1,38 @@
+{
+  "per_class": {
+    "barretts": 28,
+    "barretts-short-segment": 37,
+    "bbps-0-1": 452,
+    "bbps-2-3": 803,
+    "cecum": 706,
+    "dyed-lifted-polyps": 701,
+    "dyed-resection-margins": 692,
+    "esophagitis-a": 282,
+    "esophagitis-b-d": 182,
+    "hemorrhoids": 4,
+    "ileum": 6,
+    "impacted-stool": 91,
+    "polyps": 1418,
+    "pylorus": 699,
+    "retroflex-rectum": 273,
+    "retroflex-stomach": 534,
+    "ulcerative-colitis-grade-0-1": 24,
+    "ulcerative-colitis-grade-1": 140,
+    "ulcerative-colitis-grade-1-2": 7,
+    "ulcerative-colitis-grade-2": 310,
+    "ulcerative-colitis-grade-2-3": 19,
+    "ulcerative-colitis-grade-3": 93,
+    "z-line": 652
+  },
+  "stages": {
+    "segmented": {
+      "candidates": 1000,
+      "added": 699
+    }
+  },
+  "gate_rejections": {
+    "filename_stem_in_val_or_test": 301,
+    "md5_in_val_or_test": 301,
+    "caught_by_both_gates": 301
+  }
+}
