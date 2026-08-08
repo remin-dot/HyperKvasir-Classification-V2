@@ -31,44 +31,83 @@ def _human(n: float) -> str:
     return f"{n:.1f} TB"
 
 
-def _curl_download(url: str, dest: Path) -> bool:
+# Abort and reconnect if throughput stays under this for MIN_SPEED_WINDOW seconds.
+# See _curl_download for why.
+MIN_SPEED_BYTES = 50_000
+MIN_SPEED_WINDOW = 30
+
+
+def _curl_download(url: str, dest: Path, expected_size: int | None = None) -> bool:
     """Try curl first. Returns False if curl is unavailable or fails.
 
-    datasets.simula.no serves an incomplete TLS chain (it omits the intermediate
-    certificate). Browsers and curl recover by fetching the missing intermediate
-    via the certificate's AIA extension; Python's ssl module does not, and fails
-    with CERTIFICATE_VERIFY_FAILED. curl ships with Windows 10/11 and with most
-    Linux/macOS installs, and still performs full certificate validation -- so
-    this is a fix, not a bypass.
+    Two properties of datasets.simula.no are worked around here.
+
+    1. TLS. The host serves an incomplete certificate chain (it omits the
+       intermediate). Browsers and curl recover by fetching the missing
+       intermediate via the certificate's AIA extension; Python's ssl module
+       does not, and fails with CERTIFICATE_VERIFY_FAILED. curl ships with
+       Windows 10/11 and most Linux/macOS installs and still performs full
+       certificate validation -- a fix, not a bypass.
+
+    2. Throughput decay on long-lived connections. Measured on a 29 GB
+       transfer: a fresh connection sustains ~300 KB/s, the same connection an
+       hour later delivers ~2 KB/s -- an ETA of 133 days. Reconnecting restores
+       full speed immediately. So rather than one long transfer, this runs a
+       loop of resumed transfers and deliberately aborts any connection whose
+       throughput collapses (--speed-limit / --speed-time). Each restart is a
+       fresh connection continuing from the current byte offset via -C -.
+
+    Without (2) the large archives simply do not finish.
     """
     curl = shutil.which("curl") or shutil.which("curl.exe")
     if not curl:
         return False
 
-    print("Downloading via curl (resumable, shows progress) ...")
-    result = subprocess.run([
-        curl, "-L", "--fail", "--retry", "3", "--retry-delay", "5",
-        "-C", "-",                     # resume if a partial file exists
-        "--connect-timeout", "30",
-        "-o", str(dest), url,
-    ])
-    if result.returncode == 0:
-        return True
-    # curl exits 33 when the server refuses a range request and 416 when the
-    # file is already complete; both are recoverable, everything else is not.
-    if result.returncode in (33, 36) and dest.exists():
-        print("Resume rejected by server; restarting the download.")
-        dest.unlink()
-        return subprocess.run([curl, "-L", "--fail", "-o", str(dest), url]).returncode == 0
-    print(f"curl failed (exit {result.returncode}); falling back to urllib.")
-    return False
+    print("Downloading via curl (resumable; reconnects when throughput decays) ...")
+    attempt = 0
+    while True:
+        attempt += 1
+        before = dest.stat().st_size if dest.exists() else 0
+        if expected_size and before >= expected_size:
+            return True
+
+        result = subprocess.run([
+            curl, "-L", "--fail",
+            "-C", "-",                          # resume from the current offset
+            "--retry", "5", "--retry-delay", "10", "--retry-all-errors",
+            "--connect-timeout", "30",
+            "--speed-limit", str(MIN_SPEED_BYTES),
+            "--speed-time", str(MIN_SPEED_WINDOW),
+            "-o", str(dest), url,
+        ])
+        after = dest.stat().st_size if dest.exists() else 0
+
+        if result.returncode == 0:
+            return True
+        # 28 == operation timed out, which is what --speed-limit raises. That is
+        # the expected path here, not an error: reconnect and keep going.
+        if result.returncode == 28:
+            gained = (after - before) / 1024**2
+            print(f"  [reconnect {attempt}] throughput decayed; "
+                  f"+{gained:.0f} MB this leg, {after / 1024**3:.2f} GB total")
+            if gained <= 0 and attempt > 20:
+                print("  no progress across many reconnects; giving up on curl.")
+                return False
+            continue
+        # 33/36: server refused the range request. Restart from zero.
+        if result.returncode in (33, 36) and dest.exists():
+            print("Resume rejected by server; restarting the download.")
+            dest.unlink()
+            continue
+        print(f"curl failed (exit {result.returncode}); falling back to urllib.")
+        return False
 
 
-def download(url: str, dest: Path) -> Path:
+def download(url: str, dest: Path, expected_size: int | None = None) -> Path:
     """Stream to disk with an HTTP Range resume."""
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    if _curl_download(url, dest):
+    if _curl_download(url, dest, expected_size):
         return dest
 
     existing = dest.stat().st_size if dest.exists() else 0
@@ -166,11 +205,19 @@ def main() -> None:
               f"{need_gb:.1f} GB (archive + extracted).")
 
     zip_path = args.zip or (cfg["paths"]["archives"] / zip_name)
-    if not zip_path.exists() or zip_path.stat().st_size == 0:
-        print(f"Downloading {args.component} ({spec['size_gb']} GB) -> {zip_path}")
-        download(spec["url"], zip_path)
+    # Resume on partial files. Testing only for existence would treat a 164 MB
+    # fragment of a 29 GB archive as finished and hand a truncated zip to
+    # extract(). size_gb is approximate, so allow 5% either way.
+    approx = spec["size_gb"] * 1024**3
+    have = zip_path.stat().st_size if zip_path.exists() else 0
+    if have < approx * 0.95:
+        if have:
+            print(f"Resuming {args.component}: {_human(have)} of ~{spec['size_gb']} GB already on disk")
+        else:
+            print(f"Downloading {args.component} ({spec['size_gb']} GB) -> {zip_path}")
+        download(spec["url"], zip_path, int(approx))
     else:
-        print(f"Using existing archive: {zip_path} ({_human(zip_path.stat().st_size)})")
+        print(f"Using existing archive: {zip_path} ({_human(have)})")
 
     if args.no_extract:
         print("--no-extract: stopping before extraction.")
