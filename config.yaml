@@ -1,0 +1,139 @@
+# HyperKvasir V.2 — central configuration.
+# Every script reads this. Change values here, not in the code.
+#
+# V.2 differs from V.1 in exactly one way that matters: the training set is
+# expanded with the rest of the HyperKvasir release (unlabeled images, videos,
+# segmentation set) while val/ and test/ stay byte-identical to V.1's seed-2024
+# split. That is what makes the V.1 -> V.2 comparison a paired measurement
+# instead of a new experiment.
+
+seed: 2024
+
+paths:
+  # V.2 gets its own root. V.1's D:/HyperKvasir_data is read-only input here and
+  # must not be modified -- the frozen val/test splits are hardlinked out of it.
+  data_root: "D:/HyperKvasir_v2"
+
+dataset:
+  url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-labeled-images.zip"
+  zip_name: "hyper-kvasir-labeled-images.zip"
+  splits:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  dedup: true
+
+  # All five components of the 58.6 GB release. Downloaded separately rather than
+  # as the single hyper-kvasir.zip: one failed resume on a 58 GB file over this
+  # link costs more than a day.
+  components:
+    labeled:
+      url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-labeled-images.zip"
+      size_gb: 3.9
+    unlabeled:
+      url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-unlabeled-images.zip"
+      size_gb: 29.4
+    segmented:
+      url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-segmented-images.zip"
+      size_gb: 0.046
+    videos:
+      url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-videos.zip"
+      size_gb: 25.2
+
+preprocess:
+  crop_borders: true
+  resize_max_side: 512
+  jpeg_quality: 95
+  detect_pip: true
+
+training:
+  epochs: 30
+  patience: 8
+  num_workers: 10
+  amp: true
+  label_smoothing: 0.1
+  weight_decay: 0.05
+  warmup_epochs: 3
+
+# Only the winning model from V.1. The other three were eliminated there and
+# retraining them on 90k images would cost ~12 h to re-confirm a settled result.
+models:
+  yolo11:
+    display_name: "YOLO11s-cls"
+    source: ultralytics
+    weights: "yolo11s-cls.pt"
+    img_size: 224
+    batch_size: 64
+
+evaluation:
+  latency_warmup: 50
+  latency_iters: 200
+
+selection:
+  weights:
+    macro_f1: 0.40
+    accuracy: 0.20
+    roc_auc_macro: 0.15
+    pr_balance: 0.10
+    speed: 0.10
+    size: 0.05
+  f1_guard: 0.02
+
+# --------------------------------------------------------------------------
+# V.2 additions
+# --------------------------------------------------------------------------
+
+baseline:
+  # V.1's winning checkpoint. Two jobs: it is the pseudo-labeller, and it is the
+  # number V.2 has to beat on the same frozen test set.
+  checkpoint: "baseline_v1/yolo11_best.pt"
+  metrics: "baseline_v1/metrics.json"
+  macro_f1: 0.6021          # V.1, seed 2024, 1610 test images
+  macro_f1_std: 0.0170      # V.1's measured 3-seed spread -- the noise floor
+  # V.1's manifest, copied to the V.2 data root. Source of truth for the leakage
+  # gates: it carries the md5 of every image and which split it landed in.
+  v1_manifest: "v1_manifest.csv"
+
+expand:
+  # Pseudo-labelling the 99,417 unlabeled images with V.1's model.
+  pseudo:
+    enabled: true
+    confidence: 0.90        # keep only predictions at or above this softmax score
+    # Per-class cap. Without it the head classes swamp the tail and the whole
+    # point is lost: the goal is helping barretts/ileum/hemorrhoids, not adding
+    # 40,000 more bbps-2-3. Roughly 4x the largest real class.
+    max_per_class: 3000
+    batch_size: 256
+
+  # Frame extraction from the 373 labeled videos (1,059,519 frames total).
+  frames:
+    enabled: true
+    # One frame every 2 s. At 30 fps consecutive frames are near-duplicates, so
+    # the other 59 carry almost no extra information and cost ~11 h of training.
+    # ponytail: raise the rate if the video-sourced classes stay weak.
+    interval_seconds: 2.0
+    max_per_class: 2000
+    # Video findings whose folder name differs from the 23 image class names.
+    # Anything that still does not match is DROPPED AND COUNTED, never guessed --
+    # a wrong mapping is worse than a missing one.
+    aliases:
+      short-segment-barretts: barretts-short-segment
+      barretts-short-segment: barretts-short-segment
+      esophagitis: esophagitis-a
+      ulcerative-colitis-grade-0-1: ulcerative-colitis-grade-0-1
+      dyed-resection-margin: dyed-resection-margins
+      polyp: polyps
+      hemorrhoid: hemorrhoids
+
+  # The 1,000-image segmentation set. Every image is a polyp.
+  segmented:
+    enabled: true
+    class_name: polyps
+
+  # Leakage gates. All four are hard failures, not warnings -- see
+  # test_dataset.py. Adding 90k images creates four new ways to contaminate a
+  # test set whose number the entire project is built on comparing against.
+  gates:
+    md5: true               # reject anything hashing to a val/test image
+    filename_stem: true     # HyperKvasir reuses UUID filenames across archives,
+                            # so a re-encoded copy passes the md5 gate

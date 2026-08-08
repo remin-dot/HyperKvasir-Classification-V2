@@ -1,0 +1,43 @@
+# Dataset lives outside the repo. V.2 pulls the full 58.6 GB HyperKvasir
+# release; none of it is redistributable from here (CC BY 4.0, and it is 58 GB).
+dataset/raw/
+dataset/train/
+dataset/val/
+dataset/test/
+*.zip
+
+# V.2 intermediates: extracted archives, sampled video frames, pseudo-labelled
+# images. All regenerable from the archives.
+archives/
+raw_unlabeled/
+raw_videos/
+raw_segmented/
+frames/
+*.avi
+*.mp4
+*.mkv
+
+# Training checkpoints: 377 MB across four models, regenerable in ~75 min.
+checkpoints/
+*.pth
+*.pt
+
+# ...except the selected model, which the report points readers to (10.6 MB).
+!results/best_model/best_model_checkpoint/best.pt
+
+# ...and V.1's winning checkpoint (10.6 MB). It is both the pseudo-labeller and
+# the baseline V.2 is measured against, so the repo is not reproducible without it.
+!baseline_v1/yolo11_best.pt
+
+# Pretrained weights auto-downloaded by Ultralytics into the working directory.
+/yolov8*.pt
+/yolo11*.pt
+
+logs/
+runs/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/

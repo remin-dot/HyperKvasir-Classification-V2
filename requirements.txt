@@ -1,0 +1,29 @@
+# Install torch FIRST from the CUDA 12.4 index, otherwise pip grabs the CPU build:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+#
+# Exact resolved versions of everything below are captured into hardware_info.txt
+# at run time, so a run is always reproducible from its own report.
+
+torch>=2.4,<3.0
+torchvision>=0.19,<1.0
+
+ultralytics>=8.3.0,<9.0        # YOLOv8-cls and YOLO11-cls
+timm>=1.0.0,<2.0               # EfficientNetV2-S with ImageNet-21k weights
+grad-cam>=1.5.0,<2.0           # Grad-CAM + EigenCAM fallback
+# opencv-python, NOT opencv-python-headless: ultralytics and grad-cam both
+# depend on the former, and installing both variants puts two conflicting cv2
+# packages on the path.
+opencv-python>=4.9
+
+scikit-learn>=1.4,<2.0
+numpy>=1.24,<3.0
+pandas>=2.0,<3.0
+openpyxl>=3.1                  # .xlsx comparison export
+matplotlib>=3.8,<4.0
+Pillow>=10.0
+PyYAML>=6.0
+tqdm>=4.66
+psutil>=5.9
+
+pytest>=8.0                    # dataset integrity checks only

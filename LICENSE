@@ -1,0 +1,38 @@
+MIT License
+
+Copyright (c) 2026 Bing
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+The HyperKvasir dataset is NOT covered by this license. It is distributed
+separately under CC BY 4.0 by Simula Research Laboratory and is not
+redistributed in this repository.
+
+    Borgli, H., Thambawita, V., Smedsrud, P.H. et al.
+    HyperKvasir, a comprehensive multi-class image and video dataset for
+    gastrointestinal endoscopy. Scientific Data 7, 283 (2020).
+    https://doi.org/10.1038/s41597-020-00622-y
+
+Grad-CAM visualizations in gradcam/ are derived from HyperKvasir images and
+remain subject to CC BY 4.0 attribution.
+
+The trained model weights in results/ are research artifacts. They are NOT
+validated for clinical use and must not be used for medical diagnosis.
