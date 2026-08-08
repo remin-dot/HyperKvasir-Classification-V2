@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import subprocess
+import time
 import sys
 import urllib.error
 import urllib.request
@@ -35,6 +36,9 @@ def _human(n: float) -> str:
 # See _curl_download for why.
 MIN_SPEED_BYTES = 50_000
 MIN_SPEED_WINDOW = 30
+# Consecutive zero-byte attempts before declaring the transfer genuinely dead.
+MAX_STALLED_ATTEMPTS = 40
+RETRY_SLEEP = 15
 
 
 def _curl_download(url: str, dest: Path, expected_size: int | None = None) -> bool:
@@ -64,7 +68,7 @@ def _curl_download(url: str, dest: Path, expected_size: int | None = None) -> bo
         return False
 
     print("Downloading via curl (resumable; reconnects when throughput decays) ...")
-    attempt = 0
+    attempt = stalled = 0
     while True:
         attempt += 1
         before = dest.stat().st_size if dest.exists() else 0
@@ -84,23 +88,41 @@ def _curl_download(url: str, dest: Path, expected_size: int | None = None) -> bo
 
         if result.returncode == 0:
             return True
-        # 28 == operation timed out, which is what --speed-limit raises. That is
-        # the expected path here, not an error: reconnect and keep going.
-        if result.returncode == 28:
-            gained = (after - before) / 1024**2
-            print(f"  [reconnect {attempt}] throughput decayed; "
-                  f"+{gained:.0f} MB this leg, {after / 1024**3:.2f} GB total")
-            if gained <= 0 and attempt > 20:
-                print("  no progress across many reconnects; giving up on curl.")
-                return False
-            continue
-        # 33/36: server refused the range request. Restart from zero.
+
+        gained = after - before
+        if gained > 0:
+            stalled = 0
+        else:
+            stalled += 1
+
+        # 33/36: server refused the range request, so the partial file is
+        # unusable and the transfer has to start over.
         if result.returncode in (33, 36) and dest.exists():
             print("Resume rejected by server; restarting the download.")
             dest.unlink()
+            stalled = 0
             continue
-        print(f"curl failed (exit {result.returncode}); falling back to urllib.")
-        return False
+
+        # Every other failure is treated as retryable. Over a 20+ hour transfer
+        # this link produces exit 28 (throughput floor, the expected path),
+        # exit 6 (transient DNS failure) and assorted connection resets. None of
+        # them mean the download cannot continue, and the urllib fallback is not
+        # an option for these archives -- it cannot complete this host's TLS
+        # handshake at all, so falling through to it just ends the transfer.
+        # Only genuine deadlock -- many consecutive attempts moving zero
+        # bytes -- is fatal.
+        if stalled >= MAX_STALLED_ATTEMPTS:
+            print(f"  no progress across {stalled} consecutive attempts "
+                  f"(last exit {result.returncode}); giving up.")
+            return False
+
+        reason = {28: "throughput floor", 6: "DNS resolution failed"}.get(
+            result.returncode, f"exit {result.returncode}")
+        print(f"  [reconnect {attempt}] {reason}; +{gained / 1024**2:.0f} MB this leg, "
+              f"{after / 1024**3:.2f} GB total"
+              + (f", {stalled} stalled" if stalled else ""))
+        time.sleep(RETRY_SLEEP if result.returncode != 28 else 0)
+        continue
 
 
 def download(url: str, dest: Path, expected_size: int | None = None) -> Path:
