@@ -35,7 +35,7 @@ dataset:
       size_gb: 29.4
     segmented:
       url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-segmented-images.zip"
-      size_gb: 0.046
+      size_gb: 0.043
     videos:
       url: "https://datasets.simula.no/downloads/hyper-kvasir/hyper-kvasir-videos.zip"
       size_gb: 25.2
